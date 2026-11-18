@@ -330,6 +330,7 @@ async function handleCallback(token, env, query) {
     try { await sendTelegram(token, chatId, await tutorReply(env, question), tutorKeyboard()); } catch { await sendTelegram(token, chatId, "AI Ustoz vaqtincha javob bera olmadi.", menuKeyboard()); }
     return;
   }
+  if (data === "link_site") {
     const code = await issueLinkCode(env, chatId);
     await sendTelegram(token, chatId, "Saytni ulash kodi: " + code + "\n5 daqiqa amal qiladi. Saytdagi ulash oynasiga kiriting.", menuKeyboard()); return;
   }
@@ -341,7 +342,7 @@ async function handleCallback(token, env, query) {
   }
   if (data === "academy" || data === "glossary") { await sendTelegram(token, chatId, LEARNING_CONTENT[data], menuKeyboard()); return; }
   if (data === "ask_tutor") {
-    await sendTelegram(token, chatId, "AI Ustozga savolingizni yozing. Masalan: RSI indikatori qanday ishlaydi?", menuKeyboard()); return;
+    await sendTelegram(token, chatId, "AI Ustozga savolingizni yozing. Masalan: RSI indikatori qanday ishlaydi?", tutorKeyboard()); return;
   }
   if (data === "cancel") {
     if (p) { delete p.step; await saveProfile(env, chatId, p); }
