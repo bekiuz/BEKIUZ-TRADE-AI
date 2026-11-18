@@ -212,9 +212,23 @@ async function siteMe(request, env) {
   const chatId = await env.USER_MEMORY.get("sitetoken:" + token);
   if (!chatId) return json({ error: "Ulanish muddati tugagan. Qayta ulang." }, 401);
   const profile = await getProfile(env, chatId);
-  return json({ ok: true, profile: profile || null, linked: true });
+  const journal = await env.USER_MEMORY.get("journal:" + chatId, "json") || [];
+  return json({ ok: true, profile: profile || null, journal, quizCorrect: profile?.quizCorrect || 0, quizAttempts: profile?.quizAttempts || 0, linked: true });
 }
 
+
+
+async function siteTutor(request, env) {
+  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!token || !env.USER_MEMORY) return json({ error: "Avval Telegram bilan ulang." }, 401);
+  const chatId = await env.USER_MEMORY.get("sitetoken:" + token);
+  if (!chatId) return json({ error: "Ulanish muddati tugagan. Qayta ulang." }, 401);
+  const body = await request.json().catch(() => ({}));
+  const question = String(body.question || "").trim();
+  if (question.length < 2 || question.length > 1000) return json({ error: "Savol 2–1000 belgi bo‘lsin." }, 400);
+  try { return json({ ok: true, answer: await tutorReply(env, question) }); }
+  catch { return json({ error: "AI Ustoz hozircha javob bera olmadi." }, 503); }
+}
 
 async function tutorReply(env, question) {
   if (!env.AI) return "AI Ustoz hozircha mavjud emas. Keyinroq qayta urinib ko‘ring.";
@@ -426,6 +440,7 @@ export default {
     if (request.method === "POST" && url.pathname === "/api/analyze") return analyzeRequest(request, env);
     if (request.method === "POST" && url.pathname === "/api/link/claim") return claimSiteLink(request, env);
     if (request.method === "GET" && url.pathname === "/api/me") return siteMe(request, env);
+    if (request.method === "POST" && url.pathname === "/api/tutor") return siteTutor(request, env);
     if (request.method === "POST" && url.pathname === "/telegram/webhook") return handleTelegram(request, env);
     return new Response("Not found", { status: 404 });
   }
