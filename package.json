@@ -1,0 +1,9 @@
+{
+  "name": "bekiuz-trade-ai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cf dev",
+    "deploy": "cf deploy"
+  }
+}
