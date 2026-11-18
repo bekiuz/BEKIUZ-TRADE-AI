@@ -43,6 +43,16 @@ function parseModelJson(raw) {
 function safeText(value, fallback) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, 300) : fallback;
 }
+function normalizeScores(p) {
+  const values = [p.buy_score, p.sell_score, p.neutral_score].map(v =>
+    Number.isFinite(Number(v)) ? Math.max(0, Math.min(100, Math.round(Number(v)))) : 0
+  );
+  const total = values.reduce((a, b) => a + b, 0);
+  if (!total) return { buyScore: 0, sellScore: 0, neutralScore: 100 };
+  const scaled = values.map(v => Math.round(v * 100 / total));
+  scaled[2] += 100 - scaled.reduce((a, b) => a + b, 0);
+  return { buyScore: scaled[0], sellScore: scaled[1], neutralScore: scaled[2] };
+}
 function safeList(value, fallback) {
   if (!Array.isArray(value)) return [fallback];
   const items = value.filter(v => typeof v === "string" && v.trim()).slice(0, 2).map(v => v.trim().slice(0, 180));
@@ -61,6 +71,8 @@ async function analyzeChart(env, imageDataUrl, details) {
   const trends = ["bullish", "bearish", "sideways", "unclear"];
   return {
     trend: trends.includes(p.trend) ? p.trend : "unclear",
+    ...normalizeScores(p),
+    scoreReason: safeText(p.score_reason, "Grafikdan yetarli dalil ko‘rinmadi."),
     marketStructure: safeText(p.market_structure, "Aniq ko‘rinmadi."),
     candlestickObservation: safeText(p.candlestick_observation, "Shamlar aniq ko‘rinmadi."),
     visibleIndicators: safeList(p.visible_indicators, "Aniq indikator ko‘rinmadi."),
@@ -79,7 +91,7 @@ async function analyzeRequest(request, env) {
   try {
     const data = "data:" + image.type + ";base64," + bytesToBase64(new Uint8Array(await image.arrayBuffer()));
     return json({ ok: true, ...details, analysis: await analyzeChart(env, data, details),
-      notice: "Faqat ta’limiy izoh. Savdo signali yoki moliyaviy tavsiya emas." });
+      notice: "BUY/SELL/neytral ballari demo-tahlil bahosi; kalibrlangan ehtimollik yoki real savdo tavsiyasi emas." });
   } catch (e) {
     console.error(JSON.stringify({ event: "chart_analysis_failed", message: String(e) }));
     return json({ error: "AI tahlili bajarilmadi." }, 503);
@@ -138,6 +150,10 @@ function shortAnalysis(p, a) {
     "Ilova: " + p.platform + " | " + p.market,
     "Aktiv: " + p.symbol + " | " + p.timeframe,
     "Trend: " + trendLabel(a.trend),
+    "BUY ssenariy balli: " + a.buyScore + "/100",
+    "SELL ssenariy balli: " + a.sellScore + "/100",
+    "Neytral/noaniq: " + a.neutralScore + "/100",
+    "Baholash sababi: " + a.scoreReason,
     "Struktura: " + a.marketStructure,
     "Shamlar: " + a.candlestickObservation,
     "Indikator: " + a.visibleIndicators.join("; "),
@@ -145,7 +161,7 @@ function shortAnalysis(p, a) {
     "Noaniqlik: " + a.uncertainties.join("; "),
     "O‘rganish: " + a.learningPoints.join("; "),
     "",
-    "Eslatma: bu o‘quv tahlili, BUY/SELL signali yoki foyda kafolati emas."
+    "Eslatma: ballar demo-tahlil bahosi, real ehtimollik yoki foyda kafolati emas. Faqat paper-trading/o‘rganish uchun."
   ].join("\n").slice(0, 3000);
 }
 async function handleText(token, env, chatId, text) {
