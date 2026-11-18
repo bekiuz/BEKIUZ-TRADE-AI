@@ -221,7 +221,7 @@ async function siteMe(request, env) {
 }
 
 async function handleText(token, env, chatId, text) {
-  const command = text.split(/\\s+/)[0].toLowerCase();
+  const command = text.split(/\s+/)[0].toLowerCase();
   let p = await getProfile(env, chatId);
   if (command === "/link" || command === "/ulash") {
     const code = await issueLinkCode(env, chatId);
