@@ -220,6 +220,30 @@ async function siteMe(request, env) {
   return json({ ok: true, profile: profile || null, linked: true });
 }
 
+
+async function tutorReply(env, question) {
+  if (!env.AI) return "AI Ustoz hozircha mavjud emas. Keyinroq qayta urinib ko‘ring.";
+  const result = await env.AI.run(MODEL, { messages: [
+    { role: "system", content: "Sen BEKIUZ TRADE AI o‘quv ustozisan. O‘zbek tilida sodda va aniq tushuntir. Faqat trading tushunchalari, grafik savodxonligi va indikatorlar haqida ta’limiy javob ber. Hech qachon real pulga savdo signali, buy/sell buyrug‘i, kirish/chiqish narxi, stop-loss, take-profit, leverage yoki pozitsiya hajmini bermagin. Javob 900 belgidan oshmasin. Foydalanuvchiga xavfsiz demo/paper-trading o‘rganishni eslat." },
+    { role: "user", content: String(question).slice(0, 1000) }
+  ], max_tokens: 350, temperature: 0.2, chat_template_kwargs: { enable_thinking: false } });
+  return getModelText(result).slice(0, 3000);
+}
+function tutorKeyboard() {
+  return { inline_keyboard: [
+    [{ text: "RSI nima?", callback_data: "tutor:rsi" }, { text: "EMA nima?", callback_data: "tutor:ema" }],
+    [{ text: "Nega shunday?", callback_data: "tutor:why" }, { text: "Keyingi mavzu", callback_data: "tutor:next" }],
+    [{ text: "📚 Lug‘at", callback_data: "glossary" }, { text: "🏠 Menyu", callback_data: "menu" }]
+  ] };
+}
+async function saveJournal(env, chatId, analysis, profile) {
+  if (!env.USER_MEMORY) return;
+  const key = "journal:" + chatId;
+  const items = await env.USER_MEMORY.get(key, "json") || [];
+  items.unshift({ at: new Date().toISOString(), symbol: profile.symbol, market: profile.market, timeframe: profile.timeframe, trend: analysis.trend, buy: analysis.buyScore, sell: analysis.sellScore, neutral: analysis.neutralScore });
+  await env.USER_MEMORY.put(key, JSON.stringify(items.slice(0, 10)));
+}
+
 async function handleText(token, env, chatId, text) {
   const command = text.split(/\s+/)[0].toLowerCase();
   let p = await getProfile(env, chatId);
@@ -240,6 +264,28 @@ async function handleText(token, env, chatId, text) {
   if (command === "/profil") {
     if (p?.platform && p?.market && p?.symbol && p?.timeframe) await sendTelegram(token, chatId, profileSummary(p), actionKeyboard());
     else await sendTelegram(token, chatId, "Profil hali to‘liq emas. /start yuboring.", actionKeyboard());
+    return;
+  }
+  if (p?.mode === "quiz") {
+    const answer = text.trim().toUpperCase();
+    delete p.mode;
+    if (["A", "B", "C"].includes(answer)) {
+      if (answer === "A") p.quizCorrect = (p.quizCorrect || 0) + 1;
+      p.quizAttempts = (p.quizAttempts || 0) + 1;
+      await saveProfile(env, chatId, p);
+      await sendTelegram(token, chatId, answer === "A" ? "To‘g‘ri! Higher highs va higher lows ko‘tarilish tuzilmasini anglatadi. 🎉" : "Bu safar to‘g‘ri emas. To‘g‘ri javob: A) Ko‘tarilish. Higher highs + higher lows shu tuzilmani ko‘rsatadi.", menuKeyboard());
+    } else {
+      await sendTelegram(token, chatId, "Javobni A, B yoki C shaklida yuboring.", menuKeyboard());
+    }
+    return;
+  }
+  if (p && !p.step) {
+    try {
+      const answer = await tutorReply(env, text);
+      await sendTelegram(token, chatId, answer, tutorKeyboard());
+    } catch {
+      await sendTelegram(token, chatId, "Savolga javob berishda xatolik. Boshqacha yozib ko‘ring.", menuKeyboard());
+    }
     return;
   }
   if (!p || !p.step) {
@@ -277,7 +323,7 @@ async function handleCallback(token, env, query) {
   const data = String(query.data || "");
   let p = await getProfile(env, chatId);
   await telegramCall(token, "answerCallbackQuery", { callback_query_id: query.id });
-  if (data === "link_site") {
+  if (data === "menu") { await sendTelegram(token, chatId, "BEKIUZ TRADE AI — asosiy menyu", menuKeyboard()); return; }\n  if (data.startsWith("tutor:")) {\n    const topic = data.slice(6);\n    const question = topic === "rsi" ? "RSI indikatori nima va uni qanday o‘qishni o‘rganish mumkin?" : topic === "ema" ? "EMA nima va u nimani ko‘rsatadi?" : topic === "why" ? "AI grafik tahlilida xulosalar qanday dalillarga tayanadi?" : "Keyingi dars sifatida support va resistance zonalarini tushuntir.";\n    try { await sendTelegram(token, chatId, await tutorReply(env, question), tutorKeyboard()); } catch { await sendTelegram(token, chatId, "AI Ustoz vaqtincha javob bera olmadi.", menuKeyboard()); }\n    return;\n  }\n  if (data === "link_site") {
     const code = await issueLinkCode(env, chatId);
     await sendTelegram(token, chatId, "Saytni ulash kodi: " + code + "\n5 daqiqa amal qiladi. Saytdagi ulash oynasiga kiriting.", menuKeyboard()); return;
   }
