@@ -5,5 +5,8 @@
   "scripts": {
     "dev": "cf dev",
     "deploy": "cf deploy"
+  },
+  "devDependencies": {
+    "cf": "^1.0.0-rc.1"
   }
 }
