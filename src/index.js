@@ -223,7 +223,12 @@ async function siteMe(request, env) {
 async function handleText(token, env, chatId, text) {
   const command = text.split(/\\s+/)[0].toLowerCase();
   let p = await getProfile(env, chatId);
-  if (command === "/link" || command === "/ulash") {\n    const code = await issueLinkCode(env, chatId);\n    await sendTelegram(token, chatId, "Saytni Telegram profilingizga ulash kodi: " + code + "\\nKod 5 daqiqa amal qiladi. Saytdagi ‘Telegram bilan ulash’ bo‘limiga kiriting.", menuKeyboard()); return;\n  }\n  if (command === "/menu") { await sendTelegram(token, chatId, "BEKIUZ TRADE AI — asosiy menyu", menuKeyboard()); return; }\n  if (["/cancel", "/bekor", "bekor qilish"].includes(command)) {
+  if (command === "/link" || command === "/ulash") {
+    const code = await issueLinkCode(env, chatId);
+    await sendTelegram(token, chatId, "Saytni Telegram profilingizga ulash kodi: " + code + "\\nKod 5 daqiqa amal qiladi. Saytdagi ‘Telegram bilan ulash’ bo‘limiga kiriting.", menuKeyboard()); return;
+  }
+  if (command === "/menu") { await sendTelegram(token, chatId, "BEKIUZ TRADE AI — asosiy menyu", menuKeyboard()); return; }
+  if (["/cancel", "/bekor", "bekor qilish"].includes(command)) {
     if (p) { delete p.step; await saveProfile(env, chatId, p); }
     await sendTelegram(token, chatId, "Jarayon bekor qilindi. Saqlangan profilingiz o‘zgarmadi.", menuKeyboard());
     return;
