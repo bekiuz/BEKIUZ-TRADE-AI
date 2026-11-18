@@ -4,15 +4,14 @@ const MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const SYSTEM_PROMPT = [
-  "You are BEKIUZ TRADE AI, an educational chart-reading tutor.",
-  "Describe only what is visibly present in the screenshot.",
-  "Never tell the user to buy, sell, enter, exit, or place an order.",
-  "Never forecast future prices or provide profit percentages, entry, stop-loss, take-profit, leverage, or position size.",
-  "Do not claim certainty or a win probability. Do not invent symbols, prices, indicators, or timeframes.",
-  "If something is unreadable, say so. Reply in Uzbek. Return only valid JSON with keys:",
-  "trend (bullish, bearish, sideways, unclear), market_structure (one short sentence),",
-  "candlestick_observation (one short sentence), visible_indicators (array),",
-  "support_resistance (one short sentence), uncertainties (array), learning_points (array of 1 to 2 short items)."
+  "You are BEKIUZ TRADE AI, a technical chart-analysis tutor for demo and paper-trading education.",
+  "Analyze visible trend, market structure, candles, and readable indicators together. Mention EMA, RSI, MACD, Bollinger Bands or volume only when actually visible; never invent values.",
+  "Return integer buy_score, sell_score and neutral_score from 0 to 100, summing to exactly 100. These are heuristic scenario-strength scores, NOT calibrated probabilities, win rates or predictions.",
+  "If evidence conflicts or the chart is unclear, increase neutral_score. Explain the evidence briefly.",
+  "Never tell the user to place real-money orders. Do not provide live execution instructions, entry/exit prices, stop-loss, take-profit, leverage or position sizing. Keep it simulated and educational.",
+  "Do not invent symbols, prices, indicators or timeframes. If unreadable, say so. Reply in Uzbek. Return only valid JSON with keys:",
+  "trend (bullish, bearish, sideways, unclear), buy_score (integer), sell_score (integer), neutral_score (integer), score_reason (one short sentence), market_structure (one short sentence),",
+  "candlestick_observation (one short sentence), visible_indicators (array), support_resistance (one short sentence), uncertainties (array), learning_points (array of 1 to 2 short items)."
 ].join(" ");
 
 function json(data, status = 200) {
@@ -113,8 +112,19 @@ async function telegramCall(token, method, payload) {
   if (!response.ok || !result.ok) throw new Error("Telegram API request failed: " + method);
   return result.result;
 }
-async function sendTelegram(token, chatId, text) {
-  return telegramCall(token, "sendMessage", { chat_id: chatId, text });
+function actionKeyboard() {
+  return { inline_keyboard: [
+    [{ text: "📊 Yangi grafik tahlili", callback_data: "new_analysis" }],
+    [{ text: "👤 Profil", callback_data: "show_profile" }, { text: "⚙️ Sozlash", callback_data: "configure" }]
+  ] };
+}
+function cancelKeyboard() {
+  return { inline_keyboard: [[{ text: "❌ Bekor qilish", callback_data: "cancel" }]] };
+}
+async function sendTelegram(token, chatId, text, replyMarkup) {
+  const payload = { chat_id: chatId, text };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
+  return telegramCall(token, "sendMessage", payload);
 }
 async function getProfile(env, chatId) {
   if (!env.USER_MEMORY) return null;
@@ -165,48 +175,95 @@ function shortAnalysis(p, a) {
   ].join("\n").slice(0, 3000);
 }
 async function handleText(token, env, chatId, text) {
-  const command = text.split(/\s+/)[0].toLowerCase();
+  const command = text.split(/\\s+/)[0].toLowerCase();
   let p = await getProfile(env, chatId);
-  if (command === "/start" || command === "/sozlash") {
-    p = p || {};
-    p.step = "platform";
-    await saveProfile(env, chatId, p);
-    await sendTelegram(token, chatId, firstQuestion());
+  if (["/cancel", "/bekor", "bekor qilish"].includes(command)) {
+    if (p) { delete p.step; await saveProfile(env, chatId, p); }
+    await sendTelegram(token, chatId, "Jarayon bekor qilindi. Saqlangan profilingiz o‘zgarmadi.", actionKeyboard());
     return;
   }
+  if (command === "/start" || command === "/sozlash") {
+    p = p || {}; p.step = "platform"; await saveProfile(env, chatId, p);
+    await sendTelegram(token, chatId, firstQuestion(), cancelKeyboard()); return;
+  }
   if (command === "/profil") {
-    if (p?.platform && p?.market && p?.symbol && p?.timeframe) await sendTelegram(token, chatId, profileSummary(p));
-    else await sendTelegram(token, chatId, "Profil hali to‘liq emas. /start yuboring.");
+    if (p?.platform && p?.market && p?.symbol && p?.timeframe) await sendTelegram(token, chatId, profileSummary(p), actionKeyboard());
+    else await sendTelegram(token, chatId, "Profil hali to‘liq emas. /start yuboring.", actionKeyboard());
     return;
   }
   if (!p || !p.step) {
     p = { step: "platform" }; await saveProfile(env, chatId, p);
-    await sendTelegram(token, chatId, firstQuestion()); return;
+    await sendTelegram(token, chatId, firstQuestion(), cancelKeyboard()); return;
   }
   if (p.step === "platform") {
     p.platform = text.slice(0, 60); p.step = "market"; await saveProfile(env, chatId, p);
-    await sendTelegram(token, chatId, marketQuestion()); return;
+    await sendTelegram(token, chatId, marketQuestion(), { inline_keyboard: [
+      [{ text: "Forex", callback_data: "market:Forex" }, { text: "Crypto", callback_data: "market:Crypto" }, { text: "Gold", callback_data: "market:Gold" }],
+      [{ text: "❌ Bekor qilish", callback_data: "cancel" }]
+    ] }); return;
   }
   if (p.step === "market") {
     p.market = text.slice(0, 30); p.step = "symbol"; await saveProfile(env, chatId, p);
-    await sendTelegram(token, chatId, symbolQuestion()); return;
+    await sendTelegram(token, chatId, symbolQuestion(), cancelKeyboard()); return;
   }
   if (p.step === "symbol") {
     p.symbol = text.slice(0, 24).toUpperCase(); p.step = "timeframe"; await saveProfile(env, chatId, p);
-    await sendTelegram(token, chatId, timeframeQuestion()); return;
+    await sendTelegram(token, chatId, timeframeQuestion(), { inline_keyboard: [
+      [{ text: "M5", callback_data: "tf:M5" }, { text: "M15", callback_data: "tf:M15" }, { text: "M30", callback_data: "tf:M30" }],
+      [{ text: "H1", callback_data: "tf:H1" }, { text: "H4", callback_data: "tf:H4" }, { text: "D1", callback_data: "tf:D1" }],
+      [{ text: "❌ Bekor qilish", callback_data: "cancel" }]
+    ] }); return;
   }
   if (p.step === "timeframe") {
     p.timeframe = text.slice(0, 20).toUpperCase(); delete p.step; p.updatedAt = new Date().toISOString();
-    await saveProfile(env, chatId, p); await sendTelegram(token, chatId, profileSummary(p)); return;
+    await saveProfile(env, chatId, p); await sendTelegram(token, chatId, profileSummary(p), actionKeyboard()); return;
   }
-  await sendTelegram(token, chatId, "Grafik screenshotini yuboring. Profilni yangilash uchun /sozlash.");
+  await sendTelegram(token, chatId, "Grafik screenshotini yuboring yoki pastdagi tugmalardan foydalaning.", actionKeyboard());
+}
+async function handleCallback(token, env, query) {
+  const chatId = query.message?.chat?.id;
+  if (!chatId) return;
+  const data = String(query.data || "");
+  let p = await getProfile(env, chatId);
+  await telegramCall(token, "answerCallbackQuery", { callback_query_id: query.id });
+  if (data === "cancel") {
+    if (p) { delete p.step; await saveProfile(env, chatId, p); }
+    await sendTelegram(token, chatId, "Jarayon bekor qilindi. Profil ma’lumotlari saqlandi.", actionKeyboard()); return;
+  }
+  if (data === "new_analysis") {
+    if (p?.platform && p?.market && p?.symbol && p?.timeframe) {
+      await sendTelegram(token, chatId, "Tayyor. Grafik screenshotini yuboring.", actionKeyboard());
+    } else {
+      p = { ...(p || {}), step: "platform" }; await saveProfile(env, chatId, p);
+      await sendTelegram(token, chatId, firstQuestion(), cancelKeyboard());
+    }
+    return;
+  }
+  if (data === "show_profile") {
+    await sendTelegram(token, chatId, p?.platform && p?.market && p?.symbol && p?.timeframe ? profileSummary(p) : "Profil hali to‘liq emas. Sozlashni boshlang.", actionKeyboard()); return;
+  }
+  if (data === "configure") {
+    p = p || {}; p.step = "platform"; await saveProfile(env, chatId, p);
+    await sendTelegram(token, chatId, firstQuestion(), cancelKeyboard()); return;
+  }
+  if (data.startsWith("market:") && p?.step === "market") {
+    p.market = data.slice(7); p.step = "symbol"; await saveProfile(env, chatId, p);
+    await sendTelegram(token, chatId, symbolQuestion(), cancelKeyboard()); return;
+  }
+  if (data.startsWith("tf:") && p?.step === "timeframe") {
+    p.timeframe = data.slice(3); delete p.step; p.updatedAt = new Date().toISOString();
+    await saveProfile(env, chatId, p); await sendTelegram(token, chatId, profileSummary(p), actionKeyboard());
+  }
 }
 async function handleTelegram(request, env) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_WEBHOOK_SECRET) return new Response("Telegram secrets missing", { status: 503 });
   if (!await secretMatches(env.TELEGRAM_WEBHOOK_SECRET, request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "")) return new Response("Unauthorized", { status: 401 });
-  const update = await request.json(), message = update.message;
+  const update = await request.json();
+  const token = env.TELEGRAM_BOT_TOKEN;
+  if (update.callback_query) { await handleCallback(token, env, update.callback_query); return new Response("ok"); }
+  const message = update.message;
   if (!message?.chat?.id) return new Response("ok");
-  const token = env.TELEGRAM_BOT_TOKEN, chatId = message.chat.id;
+  const chatId = message.chat.id;
   if (message.text) { await handleText(token, env, chatId, String(message.text).trim()); return new Response("ok"); }
   if (!Array.isArray(message.photo) || !message.photo.length) {
     await sendTelegram(token, chatId, "Grafik screenshotini yuboring. Profilni boshlash yoki yangilash uchun /start.");
@@ -229,7 +286,7 @@ async function handleTelegram(request, env) {
     const mime = path.endsWith(".png") ? "image/png" : path.endsWith(".webp") ? "image/webp" : "image/jpeg";
     const data = "data:" + mime + ";base64," + bytesToBase64(new Uint8Array(buffer));
     const analysis = await analyzeChart(env, data, profile);
-    await sendTelegram(token, chatId, shortAnalysis(profile, analysis));
+    await sendTelegram(token, chatId, shortAnalysis(profile, analysis), actionKeyboard());
   } catch (e) {
     console.error(JSON.stringify({ event: "telegram_chart_failed", message: String(e) }));
     await sendTelegram(token, chatId, "Tahlil bajarilmadi. Tiniqroq screenshot yuborib ko‘ring.");
