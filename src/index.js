@@ -174,12 +174,58 @@ function shortAnalysis(p, a) {
     "Eslatma: ballar demo-tahlil bahosi, real ehtimollik yoki foyda kafolati emas. Faqat paper-trading/o‘rganish uchun."
   ].join("\n").slice(0, 3000);
 }
+
+async function issueLinkCode(env, chatId) {
+  if (!env.USER_MEMORY) throw new Error("USER_MEMORY KV binding sozlanmagan.");
+  const bytes = new Uint32Array(1); crypto.getRandomValues(bytes);
+  const code = String(bytes[0] % 1000000).padStart(6, "0");
+  await env.USER_MEMORY.put("linkcode:" + code, String(chatId), { expirationTtl: 300 });
+  return code;
+}
+function menuKeyboard() {
+  return { inline_keyboard: [
+    [{ text: "📊 Grafik tahlili", callback_data: "new_analysis" }, { text: "🤖 AI Ustoz", callback_data: "ask_tutor" }],
+    [{ text: "🎓 Academy", callback_data: "academy" }, { text: "📚 Lug‘at", callback_data: "glossary" }],
+    [{ text: "🧪 Demo Simulator", callback_data: "simulator" }, { text: "📓 Journal", callback_data: "journal" }],
+    [{ text: "📈 Natijalarim", callback_data: "results" }, { text: "🔗 Saytni ulash", callback_data: "link_site" }],
+    [{ text: "👤 Profil", callback_data: "show_profile" }, { text: "⚙️ Sozlash", callback_data: "configure" }]
+  ] };
+}
+const LEARNING_CONTENT = {
+  academy: "🎓 TRADING ACADEMY\n\n1-dars: Trend nima?\nTrend — narx harakatining umumiy yo‘nalishi. Yuqoriroq cho‘qqi va pastliklar ko‘tarilish tuzilishini, pastroq cho‘qqi va pastliklar pasayish tuzilishini ko‘rsatishi mumkin. Bitta sham asosida xulosa qilmang.\n\nKeyingi dars: support/resistance va timeframe.",
+  glossary: "📚 TRADING LUG‘ATI\n\n• Trend — narxning umumiy yo‘nalishi.\n• Support — xaridorlar faollashishi mumkin bo‘lgan kuzatuv zonasi.\n• Resistance — sotuvchilar faollashishi mumkin bo‘lgan kuzatuv zonasi.\n• RSI — momentum indikatori; odatda 0–100 oralig‘ida.\n• EMA — narxlarning eksponensial o‘rtacha qiymati.\n• Volume — savdo hajmi.\n• Timeframe — bitta sham qamrab oladigan vaqt.",
+  simulator: "🧪 DEMO SIMULATOR\n\nBu bo‘lim faqat virtual o‘quv mashqlari uchun. Haqiqiy pul, broker yoki real buy/sell buyruqlari ulanmagan.\n\nMashq: grafikda trendni aniqlang. Higher highs + higher lows ko‘rinsa, bu qanday tuzilma?\nA) Ko‘tarilish  B) Pasayish  C) Yonlama\n\nJavobni A, B yoki C deb yuboring.",
+  journal: "📓 TRADING JOURNAL\n\nHozircha bu yerda o‘quv mashqlaringiz va grafik tahlillaringiz tarixi ko‘rsatiladi. Har bir natija demo tahlil sifatida qaraladi.",
+  results: "📈 NATIJALARIM\n\nO‘quv natijalari va demo mashqlar tarixi keyingi bosqichda umumiy profil bilan ko‘rsatiladi. Hozircha grafik yuborib, tahlilni o‘rganishni boshlang."
+};
+async function claimSiteLink(request, env) {
+  if (!env.USER_MEMORY) return json({ error: "Xotira xizmati mavjud emas." }, 503);
+  const body = await request.json().catch(() => ({}));
+  const code = String(body.code || "").replace(/\D/g, "").slice(0, 6);
+  if (code.length !== 6) return json({ error: "6 xonali kodni kiriting." }, 400);
+  const chatId = await env.USER_MEMORY.get("linkcode:" + code);
+  if (!chatId) return json({ error: "Kod noto‘g‘ri yoki muddati tugagan. Botdan yangi kod oling." }, 400);
+  await env.USER_MEMORY.delete("linkcode:" + code);
+  const raw = new Uint8Array(32); crypto.getRandomValues(raw);
+  const token = Array.from(raw, b => b.toString(16).padStart(2, "0")).join("");
+  await env.USER_MEMORY.put("sitetoken:" + token, chatId, { expirationTtl: 60 * 60 * 24 * 30 });
+  return json({ ok: true, token, expiresInDays: 30 });
+}
+async function siteMe(request, env) {
+  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  if (!token || !env.USER_MEMORY) return json({ error: "Sayt Telegram bilan ulanmagan." }, 401);
+  const chatId = await env.USER_MEMORY.get("sitetoken:" + token);
+  if (!chatId) return json({ error: "Ulanish muddati tugagan. Qayta ulang." }, 401);
+  const profile = await getProfile(env, chatId);
+  return json({ ok: true, profile: profile || null, linked: true });
+}
+
 async function handleText(token, env, chatId, text) {
   const command = text.split(/\\s+/)[0].toLowerCase();
   let p = await getProfile(env, chatId);
-  if (["/cancel", "/bekor", "bekor qilish"].includes(command)) {
+  if (command === "/link" || command === "/ulash") {\n    const code = await issueLinkCode(env, chatId);\n    await sendTelegram(token, chatId, "Saytni Telegram profilingizga ulash kodi: " + code + "\\nKod 5 daqiqa amal qiladi. Saytdagi ‘Telegram bilan ulash’ bo‘limiga kiriting.", menuKeyboard()); return;\n  }\n  if (command === "/menu") { await sendTelegram(token, chatId, "BEKIUZ TRADE AI — asosiy menyu", menuKeyboard()); return; }\n  if (["/cancel", "/bekor", "bekor qilish"].includes(command)) {
     if (p) { delete p.step; await saveProfile(env, chatId, p); }
-    await sendTelegram(token, chatId, "Jarayon bekor qilindi. Saqlangan profilingiz o‘zgarmadi.", actionKeyboard());
+    await sendTelegram(token, chatId, "Jarayon bekor qilindi. Saqlangan profilingiz o‘zgarmadi.", menuKeyboard());
     return;
   }
   if (command === "/start" || command === "/sozlash") {
@@ -226,7 +272,7 @@ async function handleCallback(token, env, query) {
   const data = String(query.data || "");
   let p = await getProfile(env, chatId);
   await telegramCall(token, "answerCallbackQuery", { callback_query_id: query.id });
-  if (data === "cancel") {
+  if (data === "link_site") {\n    const code = await issueLinkCode(env, chatId);\n    await sendTelegram(token, chatId, "Saytni ulash kodi: " + code + "\\n5 daqiqa amal qiladi. Saytdagi ulash oynasiga kiriting.", menuKeyboard()); return;\n  }\n  if (data === "academy" || data === "glossary" || data === "simulator" || data === "journal" || data === "results") {\n    await sendTelegram(token, chatId, LEARNING_CONTENT[data], menuKeyboard()); return;\n  }\n  if (data === "ask_tutor") {\n    await sendTelegram(token, chatId, "AI Ustozga savolingizni yozing. Masalan: RSI indikatori qanday ishlaydi?", menuKeyboard()); return;\n  }\n  if (data === "cancel") {
     if (p) { delete p.step; await saveProfile(env, chatId, p); }
     await sendTelegram(token, chatId, "Jarayon bekor qilindi. Profil ma’lumotlari saqlandi.", actionKeyboard()); return;
   }
@@ -309,7 +355,7 @@ export default {
       telegramConfigured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_WEBHOOK_SECRET),
       memoryAvailable: Boolean(env.USER_MEMORY)
     });
-    if (request.method === "POST" && url.pathname === "/api/analyze") return analyzeRequest(request, env);
+    if (request.method === "POST" && url.pathname === "/api/analyze") return analyzeRequest(request, env);\n    if (request.method === "POST" && url.pathname === "/api/link/claim") return claimSiteLink(request, env);\n    if (request.method === "GET" && url.pathname === "/api/me") return siteMe(request, env);
     if (request.method === "POST" && url.pathname === "/telegram/webhook") return handleTelegram(request, env);
     return new Response("Not found", { status: 404 });
   }
