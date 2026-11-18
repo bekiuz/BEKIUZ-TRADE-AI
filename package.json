@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "cf dev",
-    "deploy": "cf deploy"
+    "deploy": "cf deploy",
+    "test": "node tests/smoke.mjs"
   },
   "devDependencies": {
     "cf": "^1.0.0-rc.1"
