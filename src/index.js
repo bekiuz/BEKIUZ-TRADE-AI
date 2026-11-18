@@ -399,6 +399,7 @@ async function handleTelegram(request, env) {
     const mime = path.endsWith(".png") ? "image/png" : path.endsWith(".webp") ? "image/webp" : "image/jpeg";
     const data = "data:" + mime + ";base64," + bytesToBase64(new Uint8Array(buffer));
     const analysis = await analyzeChart(env, data, profile);
+    await saveJournal(env, chatId, analysis, profile);
     await sendTelegram(token, chatId, shortAnalysis(profile, analysis), actionKeyboard());
   } catch (e) {
     console.error(JSON.stringify({ event: "telegram_chart_failed", message: String(e) }));
