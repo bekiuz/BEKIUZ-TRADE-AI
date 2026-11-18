@@ -15,6 +15,15 @@ This is an educational tool, not a trading-signal service. It does not tell user
 - Health endpoint at /api/health.
 - Basic Node.js smoke checks.
 
+## Live preview
+
+The current Cloudflare Worker deployment is available at:
+
+- Web app: https://bekiuz-trade-ai.bekiuz67.workers.dev
+- Health endpoint: https://bekiuz-trade-ai.bekiuz67.workers.dev/api/health
+
+The Worker and its Workers AI binding have been uploaded to the Cloudflare account. The Telegram webhook is not active until its two secrets are configured and BotFather webhook registration is completed.
+
 ## Local setup
 
 Requirements: Node.js 22.18 or newer.
