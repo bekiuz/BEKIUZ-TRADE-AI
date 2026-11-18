@@ -323,13 +323,23 @@ async function handleCallback(token, env, query) {
   const data = String(query.data || "");
   let p = await getProfile(env, chatId);
   await telegramCall(token, "answerCallbackQuery", { callback_query_id: query.id });
-  if (data === "menu") { await sendTelegram(token, chatId, "BEKIUZ TRADE AI — asosiy menyu", menuKeyboard()); return; }\n  if (data.startsWith("tutor:")) {\n    const topic = data.slice(6);\n    const question = topic === "rsi" ? "RSI indikatori nima va uni qanday o‘qishni o‘rganish mumkin?" : topic === "ema" ? "EMA nima va u nimani ko‘rsatadi?" : topic === "why" ? "AI grafik tahlilida xulosalar qanday dalillarga tayanadi?" : "Keyingi dars sifatida support va resistance zonalarini tushuntir.";\n    try { await sendTelegram(token, chatId, await tutorReply(env, question), tutorKeyboard()); } catch { await sendTelegram(token, chatId, "AI Ustoz vaqtincha javob bera olmadi.", menuKeyboard()); }\n    return;\n  }\n  if (data === "link_site") {
+  if (data === "menu") { await sendTelegram(token, chatId, "BEKIUZ TRADE AI — asosiy menyu", menuKeyboard()); return; }
+  if (data.startsWith("tutor:")) {
+    const topic = data.slice(6);
+    const question = topic === "rsi" ? "RSI indikatori nima va uni qanday o‘qishni o‘rganish mumkin?" : topic === "ema" ? "EMA nima va u nimani ko‘rsatadi?" : topic === "why" ? "AI grafik tahlilida xulosalar qanday dalillarga tayanadi?" : "Keyingi dars sifatida support va resistance zonalarini tushuntir.";
+    try { await sendTelegram(token, chatId, await tutorReply(env, question), tutorKeyboard()); } catch { await sendTelegram(token, chatId, "AI Ustoz vaqtincha javob bera olmadi.", menuKeyboard()); }
+    return;
+  }
     const code = await issueLinkCode(env, chatId);
     await sendTelegram(token, chatId, "Saytni ulash kodi: " + code + "\n5 daqiqa amal qiladi. Saytdagi ulash oynasiga kiriting.", menuKeyboard()); return;
   }
-  if (data === "academy" || data === "glossary" || data === "simulator" || data === "journal" || data === "results") {
-    await sendTelegram(token, chatId, LEARNING_CONTENT[data], menuKeyboard()); return;
+  if (data === "simulator") { const q = await getProfile(env, chatId) || {}; q.mode = "quiz"; await saveProfile(env, chatId, q); await sendTelegram(token, chatId, LEARNING_CONTENT.simulator, menuKeyboard()); return; }
+  if (data === "journal" || data === "results") {
+    const items = env.USER_MEMORY ? (await env.USER_MEMORY.get("journal:" + chatId, "json") || []) : [];
+    const summary = data === "journal" ? (items.length ? "📓 OXIRGI TAHLILLAR\n" + items.slice(0, 5).map((x, i) => (i + 1) + ". " + x.symbol + " · " + x.market + " · " + x.trend + " · " + x.at.slice(0, 10)).join("\n") : "Hozircha jurnal bo‘sh. Avval grafik yuboring.") : "📈 NATIJALARIM\nSaqlangan demo tahlillar: " + items.length + "\nQuiz to‘g‘ri javoblari: " + ((p && p.quizCorrect) || 0) + " / " + ((p && p.quizAttempts) || 0);
+    await sendTelegram(token, chatId, summary, menuKeyboard()); return;
   }
+  if (data === "academy" || data === "glossary") { await sendTelegram(token, chatId, LEARNING_CONTENT[data], menuKeyboard()); return; }
   if (data === "ask_tutor") {
     await sendTelegram(token, chatId, "AI Ustozga savolingizni yozing. Masalan: RSI indikatori qanday ishlaydi?", menuKeyboard()); return;
   }
