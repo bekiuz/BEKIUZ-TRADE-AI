@@ -112,12 +112,7 @@ async function telegramCall(token, method, payload) {
   if (!response.ok || !result.ok) throw new Error("Telegram API request failed: " + method);
   return result.result;
 }
-function actionKeyboard() {
-  return { inline_keyboard: [
-    [{ text: "📊 Yangi grafik tahlili", callback_data: "new_analysis" }],
-    [{ text: "👤 Profil", callback_data: "show_profile" }, { text: "⚙️ Sozlash", callback_data: "configure" }]
-  ] };
-}
+function actionKeyboard() { return menuKeyboard(); }
 function cancelKeyboard() {
   return { inline_keyboard: [[{ text: "❌ Bekor qilish", callback_data: "cancel" }]] };
 }
