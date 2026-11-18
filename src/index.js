@@ -277,7 +277,17 @@ async function handleCallback(token, env, query) {
   const data = String(query.data || "");
   let p = await getProfile(env, chatId);
   await telegramCall(token, "answerCallbackQuery", { callback_query_id: query.id });
-  if (data === "link_site") {\n    const code = await issueLinkCode(env, chatId);\n    await sendTelegram(token, chatId, "Saytni ulash kodi: " + code + "\\n5 daqiqa amal qiladi. Saytdagi ulash oynasiga kiriting.", menuKeyboard()); return;\n  }\n  if (data === "academy" || data === "glossary" || data === "simulator" || data === "journal" || data === "results") {\n    await sendTelegram(token, chatId, LEARNING_CONTENT[data], menuKeyboard()); return;\n  }\n  if (data === "ask_tutor") {\n    await sendTelegram(token, chatId, "AI Ustozga savolingizni yozing. Masalan: RSI indikatori qanday ishlaydi?", menuKeyboard()); return;\n  }\n  if (data === "cancel") {
+  if (data === "link_site") {
+    const code = await issueLinkCode(env, chatId);
+    await sendTelegram(token, chatId, "Saytni ulash kodi: " + code + "\n5 daqiqa amal qiladi. Saytdagi ulash oynasiga kiriting.", menuKeyboard()); return;
+  }
+  if (data === "academy" || data === "glossary" || data === "simulator" || data === "journal" || data === "results") {
+    await sendTelegram(token, chatId, LEARNING_CONTENT[data], menuKeyboard()); return;
+  }
+  if (data === "ask_tutor") {
+    await sendTelegram(token, chatId, "AI Ustozga savolingizni yozing. Masalan: RSI indikatori qanday ishlaydi?", menuKeyboard()); return;
+  }
+  if (data === "cancel") {
     if (p) { delete p.step; await saveProfile(env, chatId, p); }
     await sendTelegram(token, chatId, "Jarayon bekor qilindi. Profil ma’lumotlari saqlandi.", actionKeyboard()); return;
   }
@@ -360,7 +370,9 @@ export default {
       telegramConfigured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_WEBHOOK_SECRET),
       memoryAvailable: Boolean(env.USER_MEMORY)
     });
-    if (request.method === "POST" && url.pathname === "/api/analyze") return analyzeRequest(request, env);\n    if (request.method === "POST" && url.pathname === "/api/link/claim") return claimSiteLink(request, env);\n    if (request.method === "GET" && url.pathname === "/api/me") return siteMe(request, env);
+    if (request.method === "POST" && url.pathname === "/api/analyze") return analyzeRequest(request, env);
+    if (request.method === "POST" && url.pathname === "/api/link/claim") return claimSiteLink(request, env);
+    if (request.method === "GET" && url.pathname === "/api/me") return siteMe(request, env);
     if (request.method === "POST" && url.pathname === "/telegram/webhook") return handleTelegram(request, env);
     return new Response("Not found", { status: 404 });
   }
